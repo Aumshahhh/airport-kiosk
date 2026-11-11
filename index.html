@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Gateway Kiosk – Accessible Self-Service</title>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/lucide.min.js"></script>
+<style>
+:root{--bg:#eaf3fb;--fg:#0b2545;--card:#fff;--line:#9cc3e4;--pri:#0b2545;--onpri:#fff;--acc:#8fc1e3}
+[data-th=dark]{--bg:#061a33;--fg:#eaf4ff;--card:#0e2a4f;--line:#3a68a0;--pri:#8fc1e3;--onpri:#061a33;--acc:#1d4f86}
+[data-hc=on]{--bg:#fff;--fg:#000;--card:#fff;--line:#000;--pri:#000;--onpri:#fff;--acc:#ffd400}
+[data-hc=on][data-th=dark]{--bg:#000;--fg:#ffe600;--card:#000;--line:#ffe600;--pri:#ffe600;--onpri:#000;--acc:#333}
+body{margin:0;font-family:'Atkinson Hyperlegible',system-ui,sans-serif;background:var(--bg);color:var(--fg);-webkit-tap-highlight-color:transparent}
+.card{background:var(--card);border:2px solid var(--line);border-radius:20px;padding:1.25rem}
+.btn{min-height:64px;min-width:64px;padding:0 1.25rem;border-radius:16px;border:3px solid var(--pri);background:var(--card);color:var(--fg);font:700 1.15rem inherit;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;gap:.6rem;cursor:pointer;text-align:center}
+.btn.p{background:var(--pri);color:var(--onpri)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.tile{flex-direction:column;min-height:150px;font-size:1.3rem;padding:1rem;border-width:3px}
+.tile:active,.btn:active{transform:scale(.98)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:5px solid #f2a900;outline-offset:3px}
+input,select{min-height:64px;width:100%;font:inherit;font-size:1.25rem;padding:0 1rem;border:3px solid var(--pri);border-radius:14px;background:var(--card);color:var(--fg)}
+input[type=range]{min-height:44px;accent-color:var(--pri)}
+.seat{width:58px;height:58px;border-radius:12px;border:3px solid var(--pri);background:var(--card);color:var(--fg);font:700 1rem inherit;font-family:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer}
+.seat.sel{background:var(--pri);color:var(--onpri)}
+.seat.occ{background:repeating-linear-gradient(45deg,transparent 0 6px,var(--line) 6px 9px);opacity:.7;cursor:not-allowed}
+.stepdot{display:flex;align-items:center;gap:.4rem;font-weight:700;padding:.35rem .8rem;border-radius:99px;border:2px solid var(--line)}
+.stepdot[aria-current=step]{background:var(--pri);color:var(--onpri);border-color:var(--pri)}
+h1,h2{outline:none}
+@media (prefers-reduced-motion:no-preference){.toast{animation:pop .25s ease-out}@keyframes pop{from{transform:translate(-50%,-12px);opacity:0}}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const {useState,useEffect,useRef,createContext,useContext}=React;
+
+/* ---------- Icons (Lucide) ---------- */
+function Icon({n,s=28}){
+  const node=window.lucide&&window.lucide.icons&&window.lucide.icons[n];
+  if(!node)return null;
+  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{node.map(([t,a],i)=>React.createElement(t,{...a,key:i}))}</svg>;
+}
+
+/* ---------- Translations ---------- */
+const KEYS="welcome checkin pass tags flights nav assist lang access home back next confirm read mic code last find demo print submit listen step dep".split(" ");
+const RAW={
+en:["Welcome! How can we help you today?","Check in for flight","Print boarding pass","Print baggage tags","Flight information","Find my gate / airport map","Special assistance","Language","Accessibility settings","Home","Back","Next","Confirm","Read aloud","Voice commands","Booking code","Last name","Find my booking","Use demo booking","Print","Send request","Listening…","Step","Departures"],
+es:["¡Bienvenido! ¿En qué podemos ayudarle hoy?","Registrar vuelo","Imprimir tarjeta de embarque","Imprimir etiquetas de equipaje","Información de vuelos","Encontrar mi puerta / mapa","Asistencia especial","Idioma","Accesibilidad","Inicio","Atrás","Siguiente","Confirmar","Leer en voz alta","Comandos de voz","Código de reserva","Apellido","Buscar mi reserva","Usar reserva de demostración","Imprimir","Enviar solicitud","Escuchando…","Paso","Salidas"],
+fr:["Bienvenue ! Comment pouvons-nous vous aider ?","Enregistrer le vol","Imprimer la carte d'embarquement","Imprimer les étiquettes bagages","Informations sur les vols","Trouver ma porte / plan","Assistance spéciale","Langue","Accessibilité","Accueil","Retour","Suivant","Confirmer","Lire à voix haute","Commandes vocales","Code de réservation","Nom de famille","Trouver ma réservation","Utiliser la réservation de démo","Imprimer","Envoyer la demande","Écoute…","Étape","Départs"],
+hi:["स्वागत है! आज हम आपकी कैसे मदद करें?","फ़्लाइट चेक-इन करें","बोर्डिंग पास प्रिंट करें","बैगेज टैग प्रिंट करें","फ़्लाइट की जानकारी","मेरा गेट / नक्शा खोजें","विशेष सहायता","भाषा","सुगम्यता","होम","पीछे","आगे","पुष्टि करें","ज़ोर से पढ़ें","आवाज़ कमांड","बुकिंग कोड","अंतिम नाम","मेरी बुकिंग खोजें","डेमो बुकिंग उपयोग करें","प्रिंट करें","अनुरोध भेजें","सुन रहा है…","चरण","प्रस्थान"],
+zh:["欢迎！今天我们能为您做些什么？","办理登机","打印登机牌","打印行李牌","航班信息","查找登机口 / 地图","特殊协助","语言","无障碍设置","首页","返回","下一步","确认","朗读","语音指令","订座代码","姓氏","查找我的订单","使用演示订单","打印","发送请求","正在聆听…","步骤","出发"],
+ar:["مرحبًا! كيف يمكننا مساعدتك اليوم؟","تسجيل الوصول للرحلة","طباعة بطاقة الصعود","طباعة بطاقات الأمتعة","معلومات الرحلات","العثور على بوابتي / الخريطة","مساعدة خاصة","اللغة","إعدادات إمكانية الوصول","الرئيسية","رجوع","التالي","تأكيد","قراءة بصوت عالٍ","الأوامر الصوتية","رمز الحجز","اسم العائلة","ابحث عن حجزي","استخدم حجز تجريبي","طباعة","إرسال الطلب","جارٍ الاستماع…","الخطوة","المغادرة"]};
+const T={};Object.keys(RAW).forEach(l=>{T[l]={};KEYS.forEach((k,i)=>T[l][k]=RAW[l][i])});
+const NAMES={en:"English",es:"Español",fr:"Français",hi:"हिन्दी",zh:"中文",ar:"العربية"};
+const VL={en:"en-US",es:"es-ES",fr:"fr-FR",hi:"hi-IN",zh:"zh-CN",ar:"ar-SA"};
+
+/* ---------- Demo data (all fictional) ---------- */
+const DEMO={code:"DEMO42",last:"Rivera",name:"Alex Rivera",airline:"Skyline Air",flight:"SA 218",to:"Lisbon (LIS)",time:"14:35",board:"14:05",gate:"B12",seat:"14C",allow:2};
+const FLIGHTS=[["SA 218","Lisbon","14:35","B12","Boarding","Clock"],["NW 77","Toronto","15:10","A4","On time","Check"],["MR 904","Mexico City","15:45","C9","Delayed to 16:20","AlertTriangle"],["SA 31","Delhi","16:30","D2","On time","Check"],["MR 560","Paris","17:05","B7","On time","Check"]];
+const PLACES=[
+["gate","Plane","My gate (B12)",9,["From Kiosk 4, walk straight to the Security checkpoint.","After security, turn left onto Concourse B.","Gate B12 is on your right, just past the café."]],
+["rest","Users","Restrooms",3,["Leave the kiosk and turn right.","Walk past the information desk.","Restrooms are on the left, before the escalator."]],
+["elev","ArrowUpDown","Elevators",2,["Face the main entrance and turn left.","Elevators E1 and E2 are beside the flight board."]],
+["arest","Accessibility","Accessible restrooms",3,["Leave the kiosk and turn right.","Accessible restrooms are next to the regular restrooms.","Doors have automatic openers and extra space."]],
+["wc","Accessibility","Wheelchair assistance",2,["Go to the information desk in the center of the hall.","Staff at the Assistance Point can bring a wheelchair or escort you."]],
+["food","Utensils","Restaurants and shops",6,["Walk straight to the Central Plaza.","Cafés are on the left. Shops are on the right."]],
+["bag","Luggage","Baggage claim",8,["Walk toward the Arrivals sign.","Baggage claim carousels 1 to 4 are at the end of the hall."]],
+["sec","ShieldCheck","Security checkpoints",4,["Follow the blue floor line.","Checkpoints A and B are ahead. Checkpoint A has a step-free lane."]],
+["info","Info","Information desk",1,["The information desk is in the center of the hall, 20 meters ahead."]]];
+const SEATS_ROWS=[10,11,12,13,14,15,16],COLS="ABCDEF".split("");
+const occ=(r,c)=>(r*7+COLS.indexOf(c)*3)%4===0&&!(r===14&&c==="C");
+const isAcc=(r,c)=>r===10&&(c==="C"||c==="D");
+const DEF={lang:"en",th:"light",hc:"off",big:false,mag:1,rate:1,vol:1,audio:false,cap:true,simple:false};
+
+/* ---------- Context ---------- */
+const Ctx=createContext();
+const useApp=()=>useContext(Ctx);
+
+/* ---------- Pseudo QR (demo only) ---------- */
+function Qr({seed}){
+  let h=0;for(const ch of seed)h=(h*31+ch.charCodeAt(0))>>>0;
+  const rnd=()=>{h=(h*1664525+1013904223)>>>0;return h/4294967296};
+  const N=25,cells=[];
+  const finder=(x,y)=>x<8&&y<8||x>16&&y<8||x<8&&y>16;
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+    let on=rnd()>.5;
+    if(finder(x,y)){const fx=x>16?x-17:x,fy=y>16?y-17:y;on=Math.max(Math.abs(fx-3),Math.abs(fy-3))!==2&&Math.max(Math.abs(fx-3),Math.abs(fy-3))<4;}
+    if(on)cells.push(<rect key={x+"-"+y} x={x} y={y} width="1" height="1"/>);
+  }
+  return <svg viewBox="-1 -1 27 27" width="150" height="150" role="img" aria-label="QR code (demo only)" style={{background:"#fff"}}><g fill="#000">{cells}</g></svg>;
+}
+
+/* ---------- Shared small components ---------- */
+function Toggle({label,on,set,icon}){
+  return <button role="switch" aria-checked={on} className="btn" style={{justifyContent:"space-between",width:"100%"}} onClick={()=>set(!on)}>
+    <span className="flex items-center gap-3"><Icon n={icon}/>{label}</span>
+    <span className={"btn "+(on?"p":"")} style={{minHeight:40,pointerEvents:"none"}}>{on?"ON":"OFF"}</span></button>;
+}
+function BigBtn({icon,children,primary,...p}){return <button className={"btn "+(primary?"p":"")} {...p}><Icon n={icon}/>{children}</button>}
+
+/* ---------- Check-in / boarding pass / tags flow ---------- */
+function BoardingPass({b,d}){
+  return <div className="card" style={{borderWidth:4}}>
+    <div className="flex flex-wrap gap-6 items-center justify-between">
+      <div><p className="text-lg">{b.airline} · Boarding pass</p><p className="text-4xl font-bold">{b.name}</p>
+        <p className="text-2xl mt-2">{b.flight} to {b.to}</p></div>
+      <Qr seed={b.code+d.seat}/></div>
+    <dl className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5 text-xl">
+      {[["Gate",b.gate],["Seat",d.seat],["Boarding",b.board],["Departs",b.time]].map(([k,v])=><div key={k}><dt>{k}</dt><dd className="text-3xl font-bold">{v}</dd></div>)}
+    </dl>
+    <p className="mt-4 text-lg"><strong>Text version:</strong> {b.name}, flight {b.flight} to {b.to}. Boarding {b.board}, departs {b.time}, gate {b.gate}, seat {d.seat}, checked bags: {d.bags}. Demo document, not valid for travel.</p>
+  </div>;
+}
+
+function Flow({mode}){
+  const {t,say,note,b,setB,d,setD}=useApp();
+  const STEPS={checkin:["Identify","Flight","Seat","Bags","Confirm","Pass"],pass:["Identify","Pass"],tags:["Identify","Bags","Tags"]}[mode];
+  const [i,setI]=useState(0);const [code,setCode]=useState("");const [last,setLast]=useState("");
+  const s=STEPS[i];
+  const next=()=>setI(i+1);
+  const find=(c,l)=>{
+    if(c.trim().toUpperCase()===DEMO.code&&l.trim().toLowerCase()===DEMO.last.toLowerCase()){setB(DEMO);setD(x=>({...x,seat:x.seat||DEMO.seat}));note("Booking found for "+DEMO.name,"ok");next();}
+    else note("We could not find that booking. Check the code and last name, or use the demo booking.","err");
+  };
+  const nav=<div className="flex flex-wrap gap-4 mt-6">
+    {i>0&&s!=="Pass"&&s!=="Tags"&&<BigBtn icon="ArrowLeft" onClick={()=>setI(i-1)}>{t("back")}</BigBtn>}
+  </div>;
+  return <section>
+    <ol className="flex flex-wrap gap-2 mb-6" aria-label="Progress">
+      {STEPS.map((n,k)=><li key={n} className="stepdot" aria-current={k===i?"step":undefined}>{k<i?<Icon n="Check" s={18}/>:null}{k+1}. {n}</li>)}
+    </ol>
+    <h2 tabIndex={-1} className="text-3xl font-bold mb-4">{t("step")} {i+1}/{STEPS.length}: {s}</h2>
+
+    {s==="Identify"&&<div className="card grid gap-4" style={{maxWidth:720}}>
+      <p className="text-xl">Enter your booking code and last name.</p>
+      <label className="text-xl font-bold">{t("code")}<input value={code} onChange={e=>setCode(e.target.value)} autoCapitalize="characters" autoComplete="off"/></label>
+      <label className="text-xl font-bold">{t("last")}<input value={last} onChange={e=>setLast(e.target.value)} autoComplete="off"/></label>
+      <div className="flex flex-wrap gap-4">
+        <BigBtn primary icon="Search" onClick={()=>find(code,last)}>{t("find")}</BigBtn>
+        <BigBtn icon="User" onClick={()=>{setCode(DEMO.code);setLast(DEMO.last);find(DEMO.code,DEMO.last)}}>{t("demo")}</BigBtn>
+        <BigBtn icon="QrCode" onClick={()=>{note("Simulated scan: booking code read.","ok");setCode(DEMO.code);setLast(DEMO.last)}}>Scan boarding pass or QR</BigBtn>
+      </div></div>}
+
+    {s==="Flight"&&<div className="card text-2xl grid gap-2" style={{maxWidth:720}}>
+      {[["Passenger",b.name],["Airline",b.airline],["Flight",b.flight],["Destination",b.to],["Departs",b.time],["Gate",b.gate],["Seat",d.seat],["Baggage allowance",b.allow+" checked bags"]].map(([k,v])=><p key={k}><span>{k}: </span><strong>{v}</strong></p>)}
+      <BigBtn primary icon="ArrowRight" onClick={next}>{t("next")}</BigBtn></div>}
+
+    {s==="Seat"&&<div className="grid lg:grid-cols-[auto_1fr] gap-6">
+      <div className="card"><p className="text-lg mb-3 font-bold">Seat map. Cabin front is at the top.</p>
+        <div className="grid gap-2">{SEATS_ROWS.map(r=><div key={r} className="flex gap-2 items-center"><span className="w-8 font-bold">{r}</span>
+          {COLS.map((c,k)=>{const id=r+c,o=occ(r,c),a=isAcc(r,c),sel=d.seat===id;
+            return <React.Fragment key={id}>{k===3&&<span style={{width:20}}/>}
+              <button className={"seat "+(sel?"sel":"")+(o?" occ":"")} disabled={o} aria-pressed={sel}
+                aria-label={`Seat ${id}, ${o?"occupied":"available"}${a?", accessible seat with extra space":""}${sel?", selected":""}`}
+                onClick={()=>{setD({...d,seat:id});note("Seat "+id+" selected","ok")}}>
+                {o?<Icon n="X" s={22}/>:sel?<Icon n="Check" s={22}/>:a?<Icon n="Accessibility" s={22}/>:null}<span>{c}</span></button></React.Fragment>})}</div>)}</div>
+        <p className="mt-4 text-lg">✓ selected · X occupied · wheelchair icon accessible seat</p></div>
+      <div className="card grid gap-4 content-start"><label className="text-xl font-bold">Choose from a list instead
+        <select value={d.seat||""} onChange={e=>{setD({...d,seat:e.target.value});note("Seat "+e.target.value+" selected","ok")}}>
+          {SEATS_ROWS.flatMap(r=>COLS.filter(c=>!occ(r,c)).map(c=><option key={r+c} value={r+c}>{r+c}{isAcc(r,c)?" (accessible)":""}</option>))}</select></label>
+        <p className="text-xl">Current seat: <strong>{d.seat}</strong></p>
+        <BigBtn primary icon="ArrowRight" onClick={next}>{t("next")}</BigBtn></div></div>}
+
+    {s==="Bags"&&<div className="card grid gap-4" style={{maxWidth:720}}>
+      <p className="text-2xl font-bold">How many bags will you check?</p>
+      <div className="flex flex-wrap gap-4">{[0,1,2,3].map(n=><button key={n} aria-pressed={d.bags===n} className={"btn "+(d.bags===n?"p":"")} style={{width:96,fontSize:"1.8rem"}} onClick={()=>{setD({...d,bags:n});say(n+" bags")}}>{d.bags===n&&<Icon n="Check"/>}{n}</button>)}</div>
+      <p className="text-lg">Your ticket includes {b.allow} checked bags. {d.bags>b.allow?"Extra bags would be handled by the airline desk (not simulated).":"Bring bags to the drop point after you print your tags."}</p>
+      <BigBtn primary icon="ArrowRight" onClick={next}>{t("next")}</BigBtn></div>}
+
+    {s==="Confirm"&&<div className="card text-2xl grid gap-2" style={{maxWidth:720}}>
+      <p className="font-bold text-3xl">Please check your details</p>
+      <p>{b.name} · {b.flight} to {b.to}</p><p>Gate {b.gate} · Departs {b.time}</p><p>Seat <strong>{d.seat}</strong> · Checked bags <strong>{d.bags}</strong></p>
+      <div className="flex flex-wrap gap-4 mt-2"><BigBtn primary icon="Check" onClick={()=>{note("You are checked in. This is a simulation.","ok");next()}}>{t("confirm")}</BigBtn>
+        <BigBtn icon="ArrowLeft" onClick={()=>setI(i-1)}>{t("back")}</BigBtn></div></div>}
+
+    {s==="Pass"&&<div className="grid gap-4"><BoardingPass b={b} d={d}/>
+      <div className="flex flex-wrap gap-4"><BigBtn primary icon="Printer" onClick={()=>note("Printing boarding pass… (simulated)","ok")}>{t("print")}</BigBtn>
+        {mode==="checkin"&&d.bags>0&&<BigBtn icon="Luggage" onClick={()=>note("Baggage tags printing… (simulated)","ok")}>{t("tags")}</BigBtn>}</div></div>}
+
+    {s==="Tags"&&<div className="grid gap-4">{d.bags===0?<p className="card text-2xl">You chose 0 bags, so no tags are needed.</p>:
+      Array.from({length:d.bags},(_,k)=><div key={k} className="card text-2xl flex flex-wrap justify-between items-center gap-4"><span>Tag {k+1} of {d.bags} · {b.flight} · {b.to} · <strong>SKY{4410+k}</strong></span></div>)}
+      <BigBtn primary icon="Printer" onClick={()=>note("Baggage tags printing… (simulated)","ok")}>{t("print")}</BigBtn></div>}
+    {nav}
+  </section>;
+}
+
+/* ---------- Other screens ---------- */
+function Flights(){
+  const {t}=useApp();
+  return <div className="card overflow-x-auto"><table className="w-full text-2xl text-left"><caption className="sr-only">{t("dep")}</caption>
+    <thead><tr>{["Flight","Destination","Time","Gate","Status"].map(h=><th key={h} className="p-3" scope="col">{h}</th>)}</tr></thead>
+    <tbody>{FLIGHTS.map(f=><tr key={f[0]} style={{borderTop:"2px solid var(--line)"}}>{f.slice(0,4).map((c,k)=><td key={k} className="p-3 font-bold">{c}</td>)}
+      <td className="p-3"><span className="flex items-center gap-2"><Icon n={f[5]}/>{f[4]}</span></td></tr>)}</tbody></table></div>;
+}
+
+function Nav(){
+  const {say,b,t}=useApp();
+  const [sel,setSel]=useState(null);const [acc,setAcc]=useState(true);
+  const p=PLACES.find(x=>x[0]===sel);
+  const steps=p?[...p[4],...(acc&&p[0]!=="elev"&&p[0]!=="info"?["Step-free route: use elevator E2 instead of stairs or escalators."]:[])]:[];
+  const mins=p?p[3]+(acc?1:0):0;
+  return <div className="grid lg:grid-cols-[1fr_1.2fr] gap-6">
+    <div className="grid grid-cols-2 gap-3">{PLACES.map(x=><button key={x[0]} aria-pressed={sel===x[0]} className={"btn tile "+(sel===x[0]?"p":"")} style={{minHeight:100,fontSize:"1.1rem"}} onClick={()=>{setSel(x[0]);}}><Icon n={x[1]} s={32}/>{x[2]}</button>)}</div>
+    <div className="card" aria-live="polite">{!p?<p className="text-2xl">Choose a place to see directions from Kiosk 4, Main Hall.</p>:<>
+      <h2 tabIndex={-1} className="text-3xl font-bold">{p[2]}</h2>
+      <p className="text-xl my-2">About {mins} minute walk</p>
+      <Toggle label="Wheelchair-accessible route" icon="Accessibility" on={acc} set={setAcc}/>
+      <ol className="text-xl my-4 grid gap-3 list-decimal ms-6">{steps.map((s,k)=><li key={k} className={s.startsWith("Step-free")?"font-bold":""}>{s}</li>)}</ol>
+      <BigBtn primary icon="Volume2" onClick={()=>say("Directions to "+p[2]+". "+steps.join(" "),true)}>{t("read")}</BigBtn></>}</div></div>;
+}
+
+function Assist(){
+  const {note,t}=useApp();
+  const TYPES=["Wheelchair assistance","Help getting around the airport","Hearing assistance","Visual assistance","Help with check-in","Help boarding my flight"];
+  const [sel,setSel]=useState([]);const [fl,setFl]=useState("SA 218");const [loc,setLoc]=useState("This kiosk");const [conf,setConf]=useState(null);
+  if(conf)return <div className="card text-2xl grid gap-3" style={{maxWidth:760}}><p className="font-bold text-3xl flex items-center gap-3"><Icon n="Check" s={36}/>Request received (simulated)</p>
+    <p>Confirmation number: <strong>{conf}</strong></p><p>Needs: {sel.join(", ")}</p><p>Flight {fl}. Meet at: {loc}.</p>
+    <p>Please stay near the meeting location. Staff would come within about 10 minutes.</p>
+    <p className="font-bold">Prototype notice: this request was not sent to any real airport staff.</p></div>;
+  return <div className="grid gap-5" style={{maxWidth:820}}>
+    <p className="card font-bold text-lg" role="note">Prototype notice: requests are simulated and are not sent to airport staff.</p>
+    <fieldset className="grid sm:grid-cols-2 gap-3"><legend className="text-2xl font-bold mb-2">What help do you need?</legend>
+      {TYPES.map(x=><button key={x} aria-pressed={sel.includes(x)} className={"btn "+(sel.includes(x)?"p":"")} onClick={()=>setSel(sel.includes(x)?sel.filter(y=>y!==x):[...sel,x])}>{sel.includes(x)&&<Icon n="Check"/>}{x}</button>)}</fieldset>
+    <label className="text-xl font-bold">Flight number<input value={fl} onChange={e=>setFl(e.target.value)}/></label>
+    <label className="text-xl font-bold">Meeting location<select value={loc} onChange={e=>setLoc(e.target.value)}>{["This kiosk","Information desk","Security checkpoint A","Gate B12","Main entrance"].map(x=><option key={x}>{x}</option>)}</select></label>
+    <BigBtn primary icon="Send" disabled={!sel.length} onClick={()=>{setConf("SIM-"+Math.floor(10000+Math.random()*89999));note("Assistance request recorded (simulated)","ok")}}>{t("submit")}</BigBtn></div>;
+}
+
+function Lang(){
+  const {S,set,note}=useApp();
+  return <div className="grid sm:grid-cols-2 gap-4" style={{maxWidth:820}}>{Object.keys(NAMES).map(l=><button key={l} lang={l} aria-pressed={S.lang===l} className={"btn tile "+(S.lang===l?"p":"")} style={{minHeight:110,fontSize:"1.6rem"}} onClick={()=>{set({lang:l});note(NAMES[l],"ok")}}>{S.lang===l&&<Icon n="Check"/>}{NAMES[l]}</button>)}</div>;
+}
+
+function Access(){
+  const {S,set,say,log}=useApp();
+  return <div className="grid lg:grid-cols-2 gap-4">
+    <div className="grid gap-3 content-start">
+      <Toggle label="Audio navigation and voice guidance" icon="Volume2" on={S.audio} set={v=>{set({audio:v});if(v)say("Audio navigation is on.",true)}}/>
+      <Toggle label="Captions for spoken prompts" icon="Captions" on={S.cap} set={v=>set({cap:v})}/>
+      <Toggle label="Large text" icon="Type" on={S.big} set={v=>set({big:v})}/>
+      <Toggle label="High contrast" icon="Contrast" on={S.hc==="on"} set={v=>set({hc:v?"on":"off"})}/>
+      <Toggle label="Dark mode" icon="Moon" on={S.th==="dark"} set={v=>set({th:v?"dark":"light"})}/>
+      <Toggle label="Simplified mode (fewer options)" icon="Minimize2" on={S.simple} set={v=>set({simple:v})}/>
+      <div className="card"><p className="font-bold text-xl mb-2">Screen magnification</p><div className="flex gap-3">{[1,1.25,1.5].map(m=><button key={m} aria-pressed={S.mag===m} className={"btn "+(S.mag===m?"p":"")} onClick={()=>set({mag:m})}>{m*100}%</button>)}</div></div></div>
+    <div className="grid gap-3 content-start">
+      <div className="card grid gap-3"><label className="font-bold text-xl">Speech speed: {S.rate}×<input type="range" min=".6" max="1.6" step=".1" value={S.rate} onChange={e=>set({rate:+e.target.value})}/></label>
+        <label className="font-bold text-xl">Volume: {Math.round(S.vol*100)}%<input type="range" min="0" max="1" step=".1" value={S.vol} onChange={e=>set({vol:+e.target.value})}/></label>
+        <BigBtn icon="Play" onClick={()=>say("This is how the kiosk will sound.",true)}>Test voice</BigBtn></div>
+      <div className="card"><h2 className="font-bold text-xl mb-2">Transcript of spoken prompts</h2>
+        {log.length?<ul className="grid gap-2 text-lg">{log.slice(-6).map((x,k)=><li key={k}>{x}</li>)}</ul>:<p>Nothing spoken yet.</p>}</div></div></div>;
+}
+
+/* ---------- Home ---------- */
+const TILES=[["checkin","Plane"],["pass","Ticket"],["tags","Luggage"],["flights","Clock"],["nav","MapPin"],["assist","HandHelping"],["lang","Languages"],["access","Accessibility"]];
+function Home(){
+  const {t,go,S}=useApp();
+  const tiles=S.simple?TILES.filter(x=>["checkin","pass","nav","assist"].includes(x[0])):TILES;
+  return <div className="grid xl:grid-cols-[1.7fr_1fr] gap-6">
+    <div className={"grid gap-4 "+(S.simple?"grid-cols-2":"grid-cols-2")}>{tiles.map(([k,i])=><button key={k} className="btn tile p" onClick={()=>go(k)}><Icon n={i} s={44}/>{t(k)}</button>)}</div>
+    <div className="card"><h2 className="text-2xl font-bold mb-3 flex items-center gap-2"><Icon n="Clock"/>{t("dep")}</h2>
+      <ul className="grid gap-3">{FLIGHTS.slice(0,S.simple?3:5).map(f=><li key={f[0]} className="flex justify-between gap-3 text-xl"><span><strong>{f[2]}</strong> {f[1]}</span><span>Gate {f[3]} · {f[4]}</span></li>)}</ul></div></div>;
+}
+
+/* ---------- App shell ---------- */
+const CMDS=[[/check.?in|register|registrar|enregistr/i,"checkin"],[/boarding|embarque|embarquement/i,"pass"],[/tag|etiquet|étiquet/i,"tags"],[/flight|vuelo|vol/i,"flights"],[/gate|puerta|porte|map|navig|find/i,"nav"],[/assist|help|ayuda|aide/i,"assist"],[/language|idioma|langue/i,"lang"],[/access/i,"access"],[/go back|back|atr[aá]s|retour/i,"back"],[/home|inicio|accueil|start/i,"home"]];
+
+function App(){
+  const [S,setS]=useState(()=>{try{return {...DEF,...JSON.parse(localStorage.getItem("gk-settings")||"{}")}}catch(e){return DEF}});
+  const [scr,setScr]=useState("home");const [hist,setHist]=useState([]);
+  const [b,setB]=useState(null);const [d,setD]=useState({seat:null,bags:0});
+  const [cap,setCap]=useState("");const [log,setLog]=useState([]);const [toast,setToast]=useState(null);const [mic,setMic]=useState(false);
+  const main=useRef(null);const t=k=>T[S.lang][k]||T.en[k];
+  const set=p=>setS(s=>{const n={...s,...p};try{localStorage.setItem("gk-settings",JSON.stringify(n))}catch(e){}return n});
+
+  const say=(text,force)=>{
+    setCap(text);setLog(l=>[...l.slice(-19),text]);
+    if((S.audio||force)&&"speechSynthesis" in window&&S.vol>0){
+      speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);
+      u.lang=VL[S.lang];u.rate=S.rate;u.volume=S.vol;
+      const v=speechSynthesis.getVoices().find(x=>x.lang.startsWith(S.lang));if(v)u.voice=v;speechSynthesis.speak(u);
+    }else if(force&&!("speechSynthesis" in window))note("Speech is not supported in this browser. Read the captions below.","err");
+  };
+  const note=(msg,type)=>{setToast({msg,type});say(msg);clearTimeout(note.h);note.h=setTimeout(()=>setToast(null),5000)};
+  const go=s=>{if(s==="back")return back();setHist(h=>[...h,scr]);setScr(s)};
+  const back=()=>{if(!hist.length)return setScr("home");setScr(hist[hist.length-1]);setHist(hist.slice(0,-1))};
+
+  useEffect(()=>{
+    const el=document.documentElement;el.lang=S.lang;el.dir=S.lang==="ar"?"rtl":"ltr";
+    el.dataset.th=S.th;el.dataset.hc=S.hc;el.style.fontSize=S.big?"22px":"18px";
+  },[S]);
+  useEffect(()=>{
+    const h=main.current&&main.current.querySelector("h1,h2");if(h)h.focus({preventScroll:true});window.scrollTo(0,0);
+    if(S.audio){const id=setTimeout(()=>say((h?h.innerText:"")+". "+(scr==="home"?"Choose an option.":"")),200);return()=>clearTimeout(id)}
+  },[scr]);
+
+  const listen=()=>{
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR)return note("Voice commands are not supported in this browser. Please use touch.","err");
+    const r=new SR();r.lang=VL[S.lang];r.onstart=()=>{setMic(true);say(t("listen"))};r.onend=()=>setMic(false);
+    r.onerror=e=>note(e.error==="not-allowed"?"Microphone permission was denied. You can allow it in Safari settings, or use touch.":"We did not catch that. Try again.","err");
+    r.onresult=e=>{
+      const s=e.results[0][0].transcript;
+      const own=TILES.map(x=>x[0]).find(k=>s.toLowerCase().includes(t(k).toLowerCase()));
+      const c=own||(CMDS.find(([re])=>re.test(s))||[])[1];
+      if(c){note("Heard: "+s,"ok");go(c)}else note("Heard “"+s+"”. Try: check in, go back, find my gate.","err");
+    };
+    try{r.start()}catch(e){}
+  };
+
+  const onClickCap=e=>{const bt=e.target.closest("button");if(bt&&S.audio)say("Selected: "+(bt.getAttribute("aria-label")||bt.innerText))};
+  const onFocusCap=e=>{const bt=e.target.closest&&e.target.closest("button");if(bt&&S.audio)say((bt.getAttribute("aria-label")||bt.innerText)+", button")};
+  const TITLES={home:t("welcome"),checkin:t("checkin"),pass:t("pass"),tags:t("tags"),flights:t("flights"),nav:t("nav"),assist:t("assist"),lang:t("lang"),access:t("access")};
+  const val={S,set,t,go,say,note,b,setB,d,setD,log};
+  const screens={home:<Home/>,checkin:<Flow mode="checkin" key="c"/>,pass:<Flow mode="pass" key="p"/>,tags:<Flow mode="tags" key="t"/>,flights:<Flights/>,nav:<Nav/>,assist:<Assist/>,lang:<Lang/>,access:<Access/>};
+
+  return <Ctx.Provider value={val}>
+    <div onClick={onClickCap} onFocus={onFocusCap} style={{zoom:S.mag,minHeight:"100vh",paddingBottom:cap&&S.cap?120:24}}>
+      <a href="#main" className="sr-only">Skip to content</a>
+      <header className="sticky top-0 z-20 flex flex-wrap items-center gap-3 p-4" style={{background:"var(--pri)",color:"var(--onpri)",paddingTop:"max(1rem,env(safe-area-inset-top))"}}>
+        <Icon n="Plane" s={34}/><span className="text-2xl font-bold me-auto">Gateway International · Self-Service</span>
+        {[["home","Home",()=>go("home")],...(scr!=="home"?[["ArrowLeft","back",back]]:[]),["Volume2","read",()=>say(main.current.innerText,true)],["Mic","mic",listen],["Languages","lang",()=>go("lang")],["Accessibility","access",()=>go("access")]].map(([i,k,f])=>
+          <button key={k} onClick={f} aria-label={t(k)} className="btn" style={{background:"var(--bg)",color:"var(--fg)",borderColor:"var(--bg)"}}><Icon n={i==="home"?"Home":i}/><span className="hidden md:inline">{k==="mic"&&mic?t("listen"):t(k)}</span></button>)}
+      </header>
+      {toast&&<div className="toast fixed z-30 card flex items-center gap-3 text-xl font-bold" role={toast.type==="err"?"alert":"status"} style={{left:"50%",transform:"translateX(-50%)",top:100,maxWidth:"90%",borderWidth:4,borderColor:toast.type==="err"?"#c0392b":"var(--pri)"}}>
+        <Icon n={toast.type==="err"?"AlertTriangle":"CheckCircle"} s={32}/>{toast.msg}</div>}
+      <main id="main" ref={main} className="p-6 max-w-7xl mx-auto">
+        <h1 tabIndex={-1} className="text-4xl font-bold mb-6">{TITLES[scr]}</h1>
+        {screens[scr]}
+      </main>
+      {S.cap&&cap&&<div className="fixed bottom-0 inset-x-0 p-4 text-xl" role="log" aria-label="Captions" style={{background:"var(--pri)",color:"var(--onpri)"}}><Icon n="Captions" s={22}/> {cap}</div>}
+    </div>
+  </Ctx.Provider>;
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
